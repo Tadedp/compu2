@@ -70,6 +70,7 @@ def split_image(image, num_parts, width, height):
 
 """
 Applies the filter selected by the user to the corresponding part of the image.
+Converts the image part into a sequence of bytes so that the shared memory can store it.
 Notifies the coordinator process when the task has been completed through the pipe and closes it.  
 """
 def apply_filter(image_part, shared_array, start, end, filter_num, worker_pipe):
@@ -135,6 +136,8 @@ def coordinate(pipes, shared_array, width, height, workers):
 """
 Receives user inputs.
 Opens the image and creates all the necessary processes (always one coordinator).
+Creates the shared array so the processes can work. It's size is due to RGB, each pixel has
+3 values (total number of pixels multiplied by 3).
 Starts all processes and waits for their completion.
 """        
 def main(path, processes):
