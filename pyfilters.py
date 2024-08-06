@@ -9,7 +9,12 @@ from scipy import ndimage
 class InvalidValueException(Exception):
     pass
 
-def handler(coordinator, workers, coordinator_pipes, workers_pipes, image, parent_pid, sig, frame):
+"""
+Handler function for SIGINT signal. 
+Only lets the parent process execute the code.
+Releases all resources and terminates worker and coordinator processes before exiting.
+"""
+def handler(coordinator, workers, coordinator_pipes, workers_pipes, images, parent_pid, sig, frame):
     if os.getppid() == parent_pid:
         pass
     else:    
@@ -42,12 +47,17 @@ def handler(coordinator, workers, coordinator_pipes, workers_pipes, image, paren
                 except Exception:
                     pass
                 
-        if len(image) > 0:
-            image[0].close()
+        if len(images) > 0:
+            for image in images:
+                image.close()
         
         print("Resources released. Exiting...")
         os._exit(os.EX_OK)
         
+"""
+Divides the original image into, depending on processes value, one or more horizontal rectangles.
+Returns a list of all horizontal rectangles(image parts).  
+"""
 def split_image(image, num_parts, width, height):
     image_parts = []
     part_height = height // num_parts
@@ -58,6 +68,10 @@ def split_image(image, num_parts, width, height):
         
     return image_parts
 
+"""
+Applies the filter selected by the user to the corresponding part of the image.
+Notifies the coordinator process when the task has been completed through the pipe and closes it.  
+"""
 def apply_filter(image_part, shared_array, start, end, filter_num, worker_pipe):
     if filter_num == 1:
         shared_array[start:end] = ndimage.gaussian_filter(image_part, sigma=3).tobytes()
@@ -80,45 +94,72 @@ def apply_filter(image_part, shared_array, start, end, filter_num, worker_pipe):
     except Exception:
         pass
     
+"""
+Combines the processed image parts stored in shared memory by creating a new image and pasting 
+the parts in order into it. 
+Returns the image fully reconstructed.
+"""   
+def combine_parts(shared_array, width, height, num_parts):    
+    current_height = 0
+    result_image = Image.new("RGB", (width, height)) 
+    part_size_bytes = width * (height // num_parts) * 3    
     
-def coordinate_combine(pipes, shared_array, width, height, workers):
+    for i in range(num_parts):
+        start = i * part_size_bytes
+        end = start + part_size_bytes
+        image_part = Image.frombytes("RGB", (width, height // num_parts), bytes(shared_array[start:end]))   
+        result_image.paste(image_part, (0, current_height))
+        current_height += (height // num_parts)    
+        
+    return result_image
+
+"""
+Waits for the arrival of the messages from the worker processes notifying the completion of their tasks.
+Calls combine_parts and saves the resulting image. 
+Releases alredy used resources.
+"""
+def coordinate(pipes, shared_array, width, height, workers):
     for coordinator_pipe in pipes:
         try:
             coordinator_pipe.recv()
             coordinator_pipe.close()
         except Exception:
             pass
-        
-    current_height = 0
-    result_image = Image.new("RGB", (width, height)) 
-    part_size_bytes = width * (height // len(workers)) * 3    
-    for i in range(len(workers)):
-        start = i * part_size_bytes
-        end = start + part_size_bytes
-        image_part = Image.frombytes("RGB", (width, height // len(workers)), bytes(shared_array[start:end]))   
-        result_image.paste(image_part, (0, current_height))
-        current_height += (height // len(workers))
+     
+    result_image = combine_parts(shared_array, width, height, len(workers)) 
         
     result_image.show()
     result_image.save("image.png")
+    result_image.close()
     
+"""
+Receives user inputs.
+Opens the image and creates all the necessary processes (always one coordinator).
+Starts all processes and waits for their completion.
+"""        
 def main(path, processes):
+    images = []
     workers = []
-    image_list = []
     workers_pipes = []
     coordinator_list = []
     coordinator_pipes = []   
     parent_pid = os.getpid() 
-    pre_handler = functools.partial(handler, coordinator_list, workers, coordinator_pipes, workers_pipes, image_list, parent_pid) 
+    pre_handler = functools.partial(handler, coordinator_list, workers, coordinator_pipes, workers_pipes, images, parent_pid) 
     signal.signal(signal.SIGINT, pre_handler)
     
-    image = Image.open(path)
-    image_list.append(image)
+    try:
+        image = Image.open(path)
+    except Exception:
+        print("Error: Invalid path or file.")
+        os._exit(os.EX_OK)
+    
+    images.append(image)
     width = image.size[0]
     height = image.size[1]    
+    
     image_parts = split_image(image, processes - 1, width, height)
         
-    print("FILTERS")
+    print("------FILTERS------")
     print("1- Gaussian filter.")
     print("2- Median filter.")
     print("3- Sobel filter.")
@@ -150,9 +191,8 @@ def main(path, processes):
             process = multiprocessing.Process(target=apply_filter, args=(image_parts[i], shared_array, start, end, filter_num, worker_pipe))
             workers.append(process)
             
-    
         else:    
-            coordinator = multiprocessing.Process(target=coordinate_combine, args=(coordinator_pipes, shared_array, width, height, workers))    
+            coordinator = multiprocessing.Process(target=coordinate, args=(coordinator_pipes, shared_array, width, height, workers))    
             coordinator_list.append(coordinator)
             coordinator.start()
         
@@ -173,7 +213,5 @@ if __name__ == '__main__':
     if args.processes < 2:
         print("Error: Invalid value. Processes cannot be less than 2.")
     else:
-        if args.path:
-            main(args.path, args.processes)
-        else:
-            print("Error: Invalid path.")
+        main(args.path, args.processes)
+        
