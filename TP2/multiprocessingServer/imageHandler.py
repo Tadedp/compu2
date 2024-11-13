@@ -17,7 +17,10 @@ class ImageHandler(socketserver.BaseRequestHandler):
         
         # Create an ImageProcessor instance and use it to resize the image
         imageProcessor = ImageProcessor()
-        resizedImageData = imageProcessor.scaleImage(imageData, scaleFactor)
+        
+        # Resize the image using a Pool process
+        with Pool() as pool:
+            resizedImageData = pool.apply(imageProcessor.scaleImage, (imageData, scaleFactor))
 
         # Send back the length of the resized image data, followed by the image itself
         self.request.sendall(struct.pack("I", len(resizedImageData)))

@@ -13,20 +13,19 @@ from multiprocessingServer.multiprocessingServer import MultiprocessingServer
 def handler(sig, frame):
     """Handles SIGINT signal to stop both servers in the correct order."""
     print("\nReceived signal SIGINT (" + str(sig) + ").")
+    print("\nStopping servers...")
+    
     global multiprocessingServerProcess
-
+    
     # Stop the multiprocessing server first
     if multiprocessingServerProcess is not None:
-        print("\nStopping the multiprocessing server...")
         multiprocessingServerProcess.terminate()
         multiprocessingServerProcess.join()
-        print("Multiprocessing server stopped.")
-
+        
     # Stop the HTTP server loop
-    print("\nStopping the HTTP server...")
     loop = asyncio.get_running_loop()
     loop.stop() 
-    print("HTTP server stopped. Exiting...")
+    print("Servers stopped. Exiting...")
     os._exit(0)
 
 def main(host, port):
@@ -68,10 +67,21 @@ if __name__ == "__main__":
         # Validate IP address
         ip_address(args.ip)
         
+        # Check if the IP address is IPv4 or IPv6 and set the correct socket family
+        try:
+            socket.inet_pton(socket.AF_INET, args.ip)  # Check if it's IPv4
+            ip_family = socket.AF_INET
+        except socket.error:
+            try:
+                socket.inet_pton(socket.AF_INET6, args.ip)  # Check if it's IPv6
+                ip_family = socket.AF_INET6
+            except socket.error:
+                raise ValueError("Invalid IP address format")
+        
         # Validate the port number (1-65535)
         if 1 <= args.port <= 65535:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.bind((args.ip, args.port))    
+            with socket.socket(ip_family, socket.SOCK_STREAM) as s:
+                s.bind((args.ip, args.port))
         else:
             raise OSError
         

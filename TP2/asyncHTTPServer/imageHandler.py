@@ -39,6 +39,11 @@ class ImageHandler():
         if field.name != 'file' or field.filename is None:
             return web.Response(status=400, text="Bad Request: Expected an image file upload.")
         
+        # Check the file type (ensure it's JPG or PNG)
+        content_type = field.headers.get('Content-Type', '').lower()
+        if 'image/jpeg' not in content_type and 'image/png' not in content_type:
+            return web.Response(status=400, text="Invalid file type. Only JPG and PNG are allowed.")
+        
         # Read the image data into memory
         imageData = await field.read()
         imageProcessor = ImageProcessor()
