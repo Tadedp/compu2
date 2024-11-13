@@ -24,7 +24,7 @@ To run the application, follow these steps:
 - From the terminal, navigate to the directory containing the main.py file and run the following command changing ip (IPv4 or IPv6) and port values as desired to run both the asynchronous HTTP server and the multiprocessing server in the background:
 
 ```
-python main.py --ip 127.0.0.1 --port 8080
+python tp2.py --ip 127.0.0.1 --port 8080
 ```
 
 - Once the application is running, you can access the image upload and processing functionality by running the following command (you can change both file and output paths as desired):
